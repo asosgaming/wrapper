@@ -1,0 +1,14 @@
+syntax .asos.log
+
+color yellow "FILE "
+color green "WALL "
+color white "CMD "
+color lightgray "OUT "
+color lightgray "YUM "
+color green "SVC "
+color red "ERR "
+color cyan "DB "
+color default " [0-9][0-9][0-9][0-9][0-9] "
+color white "[0-9][0-9]/[0-9][0-9]/[0-9][0-9]"
+color white "[0-9][0-9]:[0-9][0-9]:[0-9][0-9]"
+color white "- "

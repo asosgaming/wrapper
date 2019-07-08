@@ -1,0 +1,129 @@
+#!/usr/bin/perl -w
+
+use strict;
+use warnings;
+use English;
+use File::Basename;
+use Data::Dumper qw(Dumper);
+
+################################################################################
+# Copyright Ⓒ 2019 ASoS Gaming
+################################################################################
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+################################################################################
+
+my $script = basename($0);
+my $full_script = "$0";
+my ($cat, $head, $tail) = ("/usr/bin/cat", "/usr/bin/head", "/usr/bin/tail");
+my $config_dir = '/usr/share/logrc';
+my $config_files = $config_dir . "/*.{logrc,apprc}";
+my $aliases_file = $config_dir . "/alias.conf";
+my %color = ();
+my %regex = ();
+my $colors = 0;
+my $command = $cat;
+my $filename = "";
+my $folder = "";
+my $full_file = "";
+
+if ($#ARGV != -1 && -e $ARGV[$#ARGV]) {
+    $filename = basename($ARGV[$#ARGV]);
+    $folder = dirname($ARGV[$#ARGV]);
+    if ($folder eq '.' || $folder eq '') { $folder = $ENV{'PWD'}; }
+    if ($folder eq '..') { $folder = dirname($ENV{'PWD'}); }
+    if ($folder eq '/') { $full_file = $folder . $filename; } else { $full_file = $folder . '/' . $filename; }
+    #print Data::Dumper->Dump([$script, $filename, $folder], [qw(script filename folder)]);
+}
+
+#print Data::Dumper->Dump([\@ARGV, $#ARGV], [qw(ARGV ARGV)]);
+
+sub ltrim { my $s = shift; $s =~ s/^\s+//;       return $s };
+sub rtrim { my $s = shift; $s =~ s/\s+$//;       return $s };
+sub  trim { my $s = shift; $s =~ s/^\s+|\s+$//g; return $s };
+sub remove_quotes { my $s = shift; $s =~ s/"//g; return $s };
+
+sub colorize {
+    my $str = shift;
+    my $rgx = shift;
+    my $col = shift;
+    if ( $str =~ m/($rgx)/ ) {
+        my $found = "$1";
+        my $re = qr/${rgx}/;
+        $str =~ s/$rgx/${col}${found}\e[0m/g;
+    }
+    return $str;
+}
+
+open(my $aliases_fh, '<:encoding(UTF-8)', $aliases_file) or die "Could not open file '$aliases_file' $!";
+while (my $row = <$aliases_fh>) {
+    chomp $row;
+    if ((rindex "$row", "alias ", 0) == 0) {
+        $row = substr($row, 6);
+        my $alias = trim(substr($row, 0, index($row, ' ')));
+        my $color = "\e[".remove_quotes(trim(substr($row, length($alias))))."m";
+        $color{"$alias"} = "$color";
+    }
+};
+close($aliases_fh) or die "Could not close file '$aliases_file': $OS_ERROR";
+#print Data::Dumper->Dump([\%color], [qw(color)]);
+
+foreach my $config_file (glob("$config_files")) {
+    my $syntax = "";
+    my $check = "";
+    open my $config_fh, "<", $config_file or die "Could not open file '$config_file': $OS_ERROR";
+    while (my $row = <$config_fh>) {
+        if ((rindex "$row", "syntax ", 0) == 0) {
+            $row = substr($row, 7);
+            $syntax = trim(substr($row, 0, index($row, ' ')));
+        } elsif ((rindex "$row", "command ", 0) == 0) {
+            $row = substr($row, 8);
+            $command = trim(substr($row, 0, index($row, ' ')));
+        } elsif ( "$script" eq "$syntax" ) { 
+            $check = "$script";
+        } else {
+            $check = (substr $full_file, - length($syntax));
+        }
+
+        #print Data::Dumper->Dump([$script, $syntax, $check], [qw(script syntax check)]);
+
+        if ("$syntax" ne "" && "$check" eq "$syntax") {
+            if ((rindex "$row", "color ", 0) == 0) {
+                #print Data::Dumper->Dump([$syntax, $config_file, $full_file], [qw(syntax config_file full_file)]);
+                $row = substr($row, 6);
+                my $cname = trim(substr($row, 0, index($row, ' ')));
+                my $pattern = remove_quotes(trim(substr($row, length($cname))));
+                $regex{"$pattern"} = $color{"$cname"};
+                #print Data::Dumper->Dump([$cname, $pattern], [qw(cname pattern)]);
+            }
+        }
+    }
+    close $config_fh or die "Could not close file '$config_file': $OS_ERROR";
+}
+#print Data::Dumper->Dump([\%regex], [qw(regex)]);
+
+if ($script eq "cat") { $command = $cat; } elsif ($script eq "head") { $command = $head; } elsif ($script eq "tail") { $command = $tail; }
+
+open(my $fh, '-|', "$command @ARGV") or die $!;
+while (my $line = <$fh>) {
+    foreach my $key (keys %regex) {
+        $line = colorize("$line", "$key", "$regex{$key}");
+    }
+    print "$line";
+}
+close ($fh);
